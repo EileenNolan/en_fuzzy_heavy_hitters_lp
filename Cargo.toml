@@ -12,7 +12,9 @@ num-traits = "0.2"
 rand = "0.8"
 
 fancy-garbling = { git = "https://github.com/GaloisInc/swanky", rev="553ede0"}
+
 ocelot = { git = "https://github.com/GaloisInc/swanky", rev="553ede0"}
 scuttlebutt = { git = "https://github.com/GaloisInc/swanky", rev="553ede0"}
 rand_chacha = "0.3"
 rayon = "1.10.0"
+clap = { version = "4", features = ["derive"] }

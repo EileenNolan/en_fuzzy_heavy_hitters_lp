@@ -21,8 +21,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Secret: {:?}, Shares: {:?}, {:?}", secret, share1, share2);
 
-    let mut socket1 = TcpStream::connect("127.0.0.1:9000").await?;
-    let mut socket2 = TcpStream::connect("127.0.0.1:9001").await?;
+    // let mut socket1 = TcpStream::connect("127.0.0.1:9000").await?;
+    // let mut socket2 = TcpStream::connect("127.0.0.1:9001").await?;
+
+    let mut socket1 = TcpStream::connect("127.0.0.1:8001").await?;
+    let mut socket2 = TcpStream::connect("127.0.0.1:8002").await?;
 
     let req1 = ShareRequest { share: share1 };
     let req2 = ShareRequest { share: share2 };
