@@ -1,4 +1,6 @@
-// use tokio::net::TcpListener;
+// dummy code with no mpc
+
+// use tokio::net::{TcpListener, TcpStream};
 // use tokio::io::{AsyncReadExt, AsyncWriteExt};
 // use serde::{Serialize, Deserialize};
 // use std::env;
@@ -12,44 +14,118 @@
 
 // #[derive(Serialize, Deserialize, Debug)]
 // struct ShareResponse {
-//     result_share: FieldElm,
+//     share: FieldElm,
 // }
 
-// #[tokio::main]
+// // This function connects to the peer server and sends it a share.
+// async fn connect_to_peer(peer_port: String, my_share: FieldElm) -> Result<FieldElm, Box<dyn Error>> {
+//     let addr = format!("127.0.0.1:{}", peer_port);
+//     let mut stream = TcpStream::connect(&addr).await?;
+//     println!("Server (port {}): Connected to peer at {}", peer_port, addr);
+
+//     let request = ShareRequest { share: my_share };
+//     let encoded = bincode::serialize(&request)?;
+//     stream.write_all(&encoded).await?;
+//     println!("Server (port {}): Sent share to peer.", peer_port);
+
+//     let mut buf = vec![0u8; 1024];
+//     let n = stream.read(&mut buf).await?;
+//     let response: ShareResponse = bincode::deserialize(&buf[..n])?;
+//     println!("Server (port {}): Received response from peer: {:?}", peer_port, response.share);
+
+//     Ok(response.share)
+// }
+
+// // This function handles an incoming connection from the leader.
+// async fn handle_incoming(
+//     mut socket: TcpStream,
+//     my_port: String,
+//     peer_port: String,
+// ) -> Result<(), Box<dyn Error>> {
+//     let mut buf = vec![0u8; 1024];
+//     let n = socket.read(&mut buf).await?;
+//     if n == 0 {
+//         println!("Server (port {}): Received empty message.", my_port);
+//         return Ok(());
+//     }
+
+//     let req: ShareRequest = bincode::deserialize(&buf[..n])?;
+//     println!("Server (port {}): Received share from leader: {:?}", my_port, req.share);
+
+//     // Connect to the peer server and obtain its share.
+//     let peer_share = connect_to_peer(peer_port.clone(), req.share).await?;
+
+//     // Convert share values to numeric form for a dummy comparison.
+//     let my_val = req.share.value as u64;
+//     let peer_val = peer_share.value as u64;
+//     println!("Server (port {}): Comparison values: mine = {}, peer = {}", my_port, my_val, peer_val);
+
+//     // Dummy computation: check if (my_val - peer_val) is <= 0.
+//     let leq = (my_val as i64 - peer_val as i64) <= 0;
+//     println!("Server (port {}): Computation: {} - {} <= 0 ? {}", my_port, my_val, peer_val, leq);
+
+//     // Prepare the response share.
+//     let result = if leq {
+//         FieldElm::from(1u64)
+//     } else {
+//         FieldElm::from(0u64)
+//     };
+
+//     let response = ShareResponse { share: result };
+//     let encoded = bincode::serialize(&response)?;
+//     socket.write_all(&encoded).await?;
+//     println!("Server (port {}): Sent response back to leader.", my_port);
+
+//     Ok(())
+// }
+
+// #[tokio::main(flavor = "current_thread")]
 // async fn main() -> Result<(), Box<dyn Error>> {
 //     let args: Vec<String> = env::args().collect();
-//     let port = args.get(1).expect("Port number required").clone();
-
-//     let addr = format!("127.0.0.1:{}", port);
-//     let listener = TcpListener::bind(&addr).await?;
-//     println!("Server listening on {}", addr);
-
-//     loop {
-//         let port_clone = port.clone();
-//         let (mut socket, _) = listener.accept().await?;
-//         tokio::spawn(async move {
-//             let mut buf = vec![0u8; 1024];
-//             match socket.read(&mut buf).await {
-//                 Ok(n) if n > 0 => {
-//                     let req: ShareRequest = bincode::deserialize(&buf[..n]).unwrap();
-//                     println!("Server on port {} received share: {:?}", port_clone, req.share);
-
-//                     let squared = req.share * req.share;
-//                     let response = ShareResponse { result_share: squared };
-//                     let encoded = bincode::serialize(&response).unwrap();
-//                     socket.write_all(&encoded).await.unwrap();
-//                 }
-//                 _ => println!("Connection closed or failed."),
-//             }
-//         });
+//     if args.len() < 3 {
+//         eprintln!("Usage: {} <my_port> <peer_port>", args[0]);
+//         std::process::exit(1);
 //     }
+
+//     let my_port = args[1].clone();
+//     let peer_port = args[2].clone();
+//     let addr = format!("127.0.0.1:{}", my_port);
+//     let listener = TcpListener::bind(&addr).await?;
+//     println!("Server (port {}): Listening on {}", my_port, addr);
+
+//     // Process exactly one connection.
+//     if let Ok((socket, peer_addr)) = listener.accept().await {
+//         println!("Server (port {}): Accepted connection from {}", my_port, peer_addr);
+//         // Process the connection inline (without using spawn_local)
+//         if let Err(e) = handle_incoming(socket, my_port.clone(), peer_port.clone()).await {
+//             eprintln!("Server (port {}): Error handling connection: {}", my_port, e);
+//         }
+//     } else {
+//         eprintln!("Server (port {}): Failed to accept connection.", my_port);
+//     }
+//     println!("Server (port {}): Exiting after processing one connection.", my_port);
+
+//     Ok(())
 // }
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::{Serialize, Deserialize};
 use std::env;
 use std::error::Error;
+pub use scuttlebutt::{AesRng, Channel};
 use en_fuzzy_heavy_hitters_lp::field::FieldElm;
+use std::io::Read;
+use std::io::Write;
+use std::panic;
+
+
+use std::thread; // for sleep
+use std::time::Duration; // for Duration::from_millis
+
+
+// Import the MPC functions.
+use en_fuzzy_heavy_hitters_lp::sum_leq_binary::{gb_sum, ev_sum}; // adjust path as needed
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ShareRequest {
@@ -61,104 +137,166 @@ struct ShareResponse {
     share: FieldElm,
 }
 
-async fn connect_to_peer(peer_port: String, my_share: FieldElm) -> Result<FieldElm, Box<dyn Error>> {
-    let addr = format!("127.0.0.1:{}", peer_port);
-    let mut stream = TcpStream::connect(&addr).await?;
-    println!("Connected to peer at {}", addr);
-
-    let request = ShareRequest { share: my_share };
-    let encoded = bincode::serialize(&request)?;
-    stream.write_all(&encoded).await?;
-
-    let mut buf = vec![0u8; 1024];
-    let n = stream.read(&mut buf).await?;
-    let response: ShareResponse = bincode::deserialize(&buf[..n])?;
-
-    Ok(response.share)
-}
-
 async fn handle_incoming(
     mut socket: TcpStream,
     my_port: String,
     peer_port: String,
 ) -> Result<(), Box<dyn Error>> {
+    // Read the leader’s share.
     let mut buf = vec![0u8; 1024];
     let n = socket.read(&mut buf).await?;
     if n == 0 {
+        println!("Server (port {}): Received empty message.", my_port);
         return Ok(());
     }
-
     let req: ShareRequest = bincode::deserialize(&buf[..n])?;
-    println!("Server on port {} received share: {:?}", my_port, req.share);
+    println!("Server (port {}): Received share from leader: {:?}", my_port, req.share);
 
-    // Connect to peer and get their share
-    let peer_share = connect_to_peer(peer_port.clone(), req.share).await?;
-
-    // Convert both shares to u64
-    let my_val = req.share.value as u64;
-    let peer_val = peer_share.value as u64;
-
+    // Parse your port numbers.
+    let my_port_num: u32 = my_port.parse().unwrap();
+    let peer_port_num: u32 = peer_port.parse().unwrap();
+    // We decide: the server with the higher port becomes the evaluator.
+    let is_evaluator = my_port_num > peer_port_num;
     println!(
-        "Server {} values: mine = {}, peer = {}",
-        my_port, my_val, peer_val
+        "Server (port {}): MPC role: {}",
+        my_port,
+        if is_evaluator { "evaluator" } else { "garbler" }
     );
 
-    // Compute (my_val - peer_val) <= 0
-    let leq = (my_val as i64 - peer_val as i64) <= 0;
-    println!(
-        "Comparison result on port {}: {} - {} <= 0 ? {}",
-        my_port, my_val, peer_val, leq
-    );
 
-    // Send result back to original client (just dummy result for now)
-    let result = if leq {
-        FieldElm::from(1u64)
+    // Our MPC input is the share received from the leader.
+    let mpc_input: u128 = req.share.value as u128;
+
+    // Use an offset (e.g., 1000) to derive the dedicated MPC port.
+    const MPC_OFFSET: u32 = 1000;
+    let my_port_closure = my_port.clone();
+
+   // Define an offset for the MPC dedicated port
+
+// Spawn a blocking task to run the MPC protocol.
+    let mpc_result: u128 = tokio::task::spawn_blocking(move || {
+        // We'll use our local copy of the server port in the closure.
+        // (my_port_closure was defined earlier as my_port.clone())
+        if !is_evaluator {
+            // This is the garbler branch.
+            let mpc_addr = format!("127.0.0.1:{}", my_port_num + MPC_OFFSET);
+            println!(
+                "Server (port {}): MPC garbler: Listening on {}",
+                my_port_closure, mpc_addr
+            );
+            let listener = std::net::TcpListener::bind(&mpc_addr).unwrap();
+            let (std_stream, peer_addr) = listener.accept().unwrap();
+            println!(
+                "Server (port {}): MPC garbler: Accepted connection from {}",
+                my_port_closure, peer_addr
+            );
+            let reader = std::io::BufReader::new(std_stream.try_clone().unwrap());
+            let writer = std::io::BufWriter::new(std_stream);
+            let mut channel = Channel::new(reader, writer);
+            let mut rng_gb = AesRng::new();
+            // Call the garbler's function (which you should have modified to return a u128).
+            let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                gb_sum(&mut rng_gb, &mut channel, mpc_input)
+            })).unwrap_or_else(|_| {
+                println!("Server (port {}): Garbler failed to produce outputs. Exiting gracefully with dummy value 0.", my_port_closure);
+                0_u128
+            });            
+            println!(
+                "Server (port {}): MPC garbler: Result (possibly dummy) = {}",
+                my_port_closure, result
+            );
+            result            
+        } else {
+            // Evaluator branch.
+            // For connection we assume the garbler is on the lower port.
+            let garbler_port = if my_port_num < peer_port_num {
+                my_port_num
+            } else {
+                peer_port_num
+            };
+            let mpc_addr = format!("127.0.0.1:{}", garbler_port + MPC_OFFSET);
+            println!(
+                "Server (port {}): MPC evaluator: Connecting to {}",
+                my_port_closure, mpc_addr
+            );
+            
+            // Retry loop so we wait until the garbler is ready.
+            let mut std_stream;
+            let mut attempts = 0;
+            loop {
+                match std::net::TcpStream::connect(&mpc_addr) {
+                    Ok(s) => {
+                        std_stream = s;
+                        break;
+                    },
+                    Err(e) => {
+                        attempts += 1;
+                        if attempts > 10 {
+                            panic!("Failed to connect after {} attempts: {}", attempts, e);
+                        }
+                        println!("Server (port {}): Connection attempt {} failed: {}. Retrying...", my_port_closure, attempts, e);
+                        thread::sleep(Duration::from_millis(200));
+                    }
+                }
+            }
+            
+            let reader = std::io::BufReader::new(std_stream.try_clone().unwrap());
+            let writer = std::io::BufWriter::new(std_stream);
+            let mut channel = Channel::new(reader, writer);
+            let mut rng_ev = AesRng::new();
+            let result = ev_sum(&mut rng_ev, &mut channel, mpc_input);
+            println!(
+                "Server (port {}): MPC evaluator: Result = {}",
+                my_port_closure, result
+            );
+            // Here, the evaluator computes the MPC output and returns it.
+            result
+        }
+    })
+    .await
+    .unwrap();
+
+    println!("Server (port {}): MPC result = {}", my_port, mpc_result);
+
+    if is_evaluator {
+        // This branch is for the evaluator: send the result back.
+        let response = ShareResponse {
+            share: FieldElm::from(mpc_result as u64),
+        };
+        let encoded = bincode::serialize(&response)?;
+        socket.write_all(&encoded).await?;
+        println!("Server (port {}): Sent MPC result back to leader.", my_port);
     } else {
-        FieldElm::from(0u64)
-    };
-
-    let response = ShareResponse { share: result };
-    let encoded = bincode::serialize(&response)?;
-    socket.write_all(&encoded).await?;
+        println!("Server (port {}): No result to send (garbler).", my_port);
+    }
+    
 
     Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         eprintln!("Usage: {} <my_port> <peer_port>", args[0]);
         std::process::exit(1);
     }
-
     let my_port = args[1].clone();
     let peer_port = args[2].clone();
     let addr = format!("127.0.0.1:{}", my_port);
     let listener = TcpListener::bind(&addr).await?;
-    println!("Server listening on {}", addr);
+    println!("Server (port {}): Listening on {}", my_port, addr);
 
-    tokio::task::LocalSet::new()
-    .run_until(async move {
-        loop {
-            let accept_result = listener.accept().await;
-            match accept_result {
-                Ok((socket, _)) => {
-                    let my_port_clone = my_port.clone();
-                    let peer_port_clone = peer_port.clone();
-                    tokio::task::spawn_local(async move {
-                        if let Err(e) = handle_incoming(socket, my_port_clone, peer_port_clone).await {
-                            eprintln!("Error handling connection: {}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    eprintln!("Failed to accept connection: {}", e);
-                }
-            }
+    // Process one connection for testing.
+    if let Ok((socket, peer_addr)) = listener.accept().await {
+        println!("Server (port {}): Accepted connection from {}", my_port, peer_addr);
+        if let Err(e) = handle_incoming(socket, my_port.clone(), peer_port.clone()).await {
+            eprintln!("Server (port {}): Error handling connection: {}", my_port, e);
         }
-    })
-    .await;
+    } else {
+        eprintln!("Server (port {}): Failed to accept connection.", my_port);
+    }
+    println!("Server (port {}): Exiting after processing one connection.", my_port);
 
     Ok(())
 }

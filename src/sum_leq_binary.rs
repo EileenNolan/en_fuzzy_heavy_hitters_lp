@@ -1,7 +1,5 @@
-
-//! An example that adds two secret numbers and subtracts a CONSTANT and outputs MSB bit in a binary garbled circuit
-//! using fancy-garbling.
-
+//! An example that adds two secret numbers and subtracts a CONSTANT and outputs the MSB bit
+//! in a binary garbled circuit using fancy-garbling.
 use fancy_garbling::{
     AllWire, BinaryBundle, Bundle, BinaryGadgets, Fancy, FancyArithmetic, FancyBinary, FancyInput,
     FancyReveal,
@@ -24,7 +22,6 @@ use std::{
 const CONSTANT: u128 = 11 + 1; // this will be delta^P (need + 1 to simulate leq 0)
 
 // A structure that contains both the garbler and the evaluator's wires.
-// This structure simplifies the API of the garbled circuit.
 struct SUMInputs<F> {
     pub garbler_wires: BinaryBundle<F>,
     pub evaluator_wires: BinaryBundle<F>,
@@ -32,7 +29,7 @@ struct SUMInputs<F> {
 
 // Extracts `num_bits` starting at position `start_bit` from a `BinaryBundle`.
 // Returns a new `BinaryBundle` containing the extracted bits.
-fn extract<F>(
+pub fn extract<F>(
     bundle: &BinaryBundle<F::Item>,
     start_bit: usize,
     num_bits: usize,
@@ -47,36 +44,31 @@ where
     Ok(BinaryBundle::from(Bundle::new(sliced)))
 }
 
-// The garbler's main method.
-fn gb_sum<C>(rng: &mut AesRng, channel: &mut C, input: u128)
+// The garbler's main method. (Modified to return a u128 result.)
+pub fn gb_sum<C>(rng: &mut AesRng, channel: &mut C, input: u128) -> u128
 where
     C: AbstractChannel + std::clone::Clone,
 {
-    // (1) Create the garbler.
     let mut gb =
         Garbler::<C, AesRng, OtSender, AllWire>::new(channel.clone(), rng.clone()).unwrap();
-    // (2) Exchange inputs; note that gb_set_fancy_inputs adjusts the input.
     let circuit_wires = gb_set_fancy_inputs(&mut gb, input);
-    // (3) Run the circuit that computes the MSB of (garbler_input - CONSTANT + evaluator_input).
     let is_negative = fancy_sum_is_negative::<Garbler<C, AesRng, OtSender, AllWire>>(&mut gb, circuit_wires)
         .unwrap();
-    // (4) Send out the result.
-    gb.outputs(is_negative.wires()).unwrap();
+    // Modified: reveal and convert the output bits into a u128.
+    let out = gb.outputs(is_negative.wires()).unwrap().expect("garbler should produce outputs");
+    util::u128_from_bits(&out)
 }
 
 // The garbler's wire exchange method.
-// The garbler's input is adjusted by subtracting CONSTANT before encoding.
 fn gb_set_fancy_inputs<F, E>(gb: &mut F, input: u128) -> SUMInputs<F::Item>
 where
     F: FancyInput<Item = AllWire, Error = E>,
     E: Debug,
 {
     let nbits = 128;
-    // Adjust the garbler's input using wrapping subtraction (two's complement arithmetic).
     let adjusted_input: u128 = input.wrapping_sub(CONSTANT);
     let garbler_wires: BinaryBundle<F::Item> = gb.bin_encode(adjusted_input, nbits).unwrap();
     let evaluator_wires: BinaryBundle<F::Item> = gb.bin_receive(nbits).unwrap();
-
     SUMInputs {
         garbler_wires,
         evaluator_wires,
@@ -84,21 +76,16 @@ where
 }
 
 // The evaluator's main method.
-fn ev_sum<C>(rng: &mut AesRng, channel: &mut C, input: u128) -> u128
+pub fn ev_sum<C>(rng: &mut AesRng, channel: &mut C, input: u128) -> u128
 where
     C: AbstractChannel + std::clone::Clone,
 {
-    // (1) Create the evaluator.
     let mut ev =
         Evaluator::<C, AesRng, OtReceiver, AllWire>::new(channel.clone(), rng.clone()).unwrap();
-    // (2) Exchange inputs with the garbler.
     let circuit_wires = ev_set_fancy_inputs(&mut ev, input);
-    // (3) Compute the MSB indicating negativity.
     let is_negative = fancy_sum_is_negative::<Evaluator<C, AesRng, OtReceiver, AllWire>>(&mut ev, circuit_wires)
         .unwrap();
-    // (4) Reveal the result.
     let bits = ev.outputs(is_negative.wires()).unwrap().expect("evaluator should produce outputs");
-    // (5) Convert the revealed bits into a u128 result.
     util::u128_from_bits(&bits)
 }
 
@@ -111,7 +98,6 @@ where
     let nbits = 128;
     let garbler_wires: BinaryBundle<F::Item> = ev.bin_receive(nbits).unwrap();
     let evaluator_wires: BinaryBundle<F::Item> = ev.bin_encode(input, nbits).unwrap();
-
     SUMInputs {
         garbler_wires,
         evaluator_wires,
@@ -136,6 +122,7 @@ where
 fn sum_in_clear(gb_value: u128, ev_value: u128) -> u128 {
     gb_value.wrapping_sub(CONSTANT).wrapping_add(ev_value)
 }
+
 
 use clap::Parser;
 #[derive(Parser)]
