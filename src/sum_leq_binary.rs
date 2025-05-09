@@ -21,7 +21,7 @@ use std::{
 // To test for a "negative" result with small inputs such as 5 and 6,
 // CONSTANT must be increased such that (garbler_input - CONSTANT + evaluator_input)
 // interpreted in two's complement is negative.
-const CONSTANT: u128 = 13; // this will be delta^P
+const CONSTANT: u128 = 11 + 1; // this will be delta^P (need + 1 to simulate leq 0)
 
 // A structure that contains both the garbler and the evaluator's wires.
 // This structure simplifies the API of the garbled circuit.
