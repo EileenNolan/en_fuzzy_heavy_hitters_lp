@@ -10,6 +10,8 @@ serde = { version = "1.0", features = ["derive"] }
 num-bigint = "0.4"
 num-traits = "0.2"
 rand = "0.8"
+futures = "0.3"
+once_cell = "1.16"
 
 fancy-garbling = { git = "https://github.com/GaloisInc/swanky", rev="553ede0"}
 
